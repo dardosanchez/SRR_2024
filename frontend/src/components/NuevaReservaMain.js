@@ -15,8 +15,8 @@ function NuevaReservaMain() {
     catedra: "",
     cantAlumnos: "",
     tipoReserva: "",
-    tipoAula: "", 
-    periodo: null, 
+    tipoAula: "",
+    periodo: null,
     detallesReserva: [],
   });
 
@@ -153,8 +153,7 @@ function NuevaReservaMain() {
           id="formulario"
           onSubmit={(e) => {
             e.preventDefault();
-          }}
-        >
+          }}>
           {currentSection === 1 && (
             <Seccion1
               formData={formData}

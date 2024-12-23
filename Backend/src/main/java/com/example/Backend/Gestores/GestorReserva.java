@@ -1,5 +1,6 @@
 package com.example.Backend.Gestores;
 
+import com.example.Backend.Utils.TimeUtils;
 import com.example.Backend.DAO.*;
 import com.example.Backend.DTO.DetalleReservaDTO;
 import com.example.Backend.DTO.ReservaDTO;
@@ -14,12 +15,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.DayOfWeek;
-import static java.time.DayOfWeek.FRIDAY;
-import static java.time.DayOfWeek.MONDAY;
-import static java.time.DayOfWeek.SATURDAY;
-import static java.time.DayOfWeek.THURSDAY;
-import static java.time.DayOfWeek.TUESDAY;
-import static java.time.DayOfWeek.WEDNESDAY;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.ArrayList;
@@ -54,7 +49,7 @@ public class GestorReserva {
 
 
     public Integer crearReserva(ReservaDTO reservaDTO) {
-        if (!validarDisponibilidadAula(reservaDTO.getDetalleReserva(), reservaDTO.getPeriodo())) {
+        if (!confirmarDisponibilidadAula(reservaDTO.getDetalleReserva(), reservaDTO.getPeriodo())) {
             throw new ReservaException("Aulas no disponibles");
         }
 
@@ -116,12 +111,12 @@ public class GestorReserva {
     }
 
 
-    public boolean validarDisponibilidadAula(List<DetalleReservaDTO> listaDetalleReserva, Tipo_Periodo tipoReserva) {
+    public boolean confirmarDisponibilidadAula(List<DetalleReservaDTO> listaDetalleReserva, Tipo_Periodo tipoReserva) {
         for (DetalleReservaDTO detalle : listaDetalleReserva) {
 
             switch (tipoReserva) {
                 case ESPORADICA:
-                    if (!validarDisponibilidadEsporadica(detalle)) {
+                    if (!confirmarDisponibilidadEsporadica(detalle)) {
                         return false;
                     }
                     break;
@@ -130,7 +125,7 @@ public class GestorReserva {
                 case PRIMER_CUATRIMESTRE:
                 case SEGUNDO_CUATRIMESTRE:
                 case ANUAL:
-                    if (!validarDisponibilidadPeriodica(detalle, tipoReserva)) {
+                    if (!confirmarDisponibilidadPeriodica(detalle, tipoReserva)) {
                         return false;
                     }
                     break;
@@ -142,25 +137,25 @@ public class GestorReserva {
         return true;
     }
 
-    private boolean validarDisponibilidadEsporadica(DetalleReservaDTO detalle) {
+    private boolean confirmarDisponibilidadEsporadica(DetalleReservaDTO detalle) {
         // Validar si existe una reserva esporádica en la fecha y aula
         List<DiaEsporadica> reservasPeriodo = reservaEsporadicaDAO
                     .findDiaEsporadicaByFechaAndAulaId(detalle.getFecha(), detalle.getAulaId());
             
             for (DiaEsporadica de : reservasPeriodo) {
-                if (hayConflictoHorario(de.getHoraInicio(), de.getHoraFinal(), 
+                if (TimeUtils.hayConflictoHorario(de.getHoraInicio(), de.getHoraFinal(), 
                         detalle.getHorarioInicio(), detalle.getHorarioFinal())) {
                     return false;
                 }
             }
 
         Integer periodoId = gestorPeriodos.periodoIdQueContieneFecha(detalle.getFecha());
-        DiaSemana diaSemana = DiaSemana.valueOf(convertirDayOfWeekADiaSemana(detalle.getFecha().getDayOfWeek()).toString());
+        DiaSemana diaSemana = DiaSemana.valueOf(TimeUtils.convertirDayOfWeekADiaSemana(detalle.getFecha().getDayOfWeek()).toString());
         List<DiaPeriodica> DiasPer = reservaPeriodicaDAO
             .findByDiaSemanaAndPeriodoAndAulaId(diaSemana, periodoId, detalle.getAulaId());
 
         for (DiaPeriodica dp : DiasPer) {
-            if (hayConflictoHorario(dp.getHoraInicio(), dp.getHoraFinal(), 
+            if (TimeUtils.hayConflictoHorario(dp.getHoraInicio(), dp.getHoraFinal(), 
                     detalle.getHorarioInicio(), detalle.getHorarioFinal())) {
                 return false;
             }
@@ -169,19 +164,20 @@ public class GestorReserva {
         return true;
     }
 
-    private boolean validarDisponibilidadPeriodica(DetalleReservaDTO detalle, Tipo_Periodo tipoPeriodo) {
+    private boolean confirmarDisponibilidadPeriodica(DetalleReservaDTO detalle, Tipo_Periodo tipoPeriodo) {
         
         ArrayList<Integer> periodosIds = gestorPeriodos.obtenerPeriodosMasProximoPorTipo(tipoPeriodo);
         List<Periodo> periodos = gestorPeriodos.traerPeriodos(periodosIds);
         
         for(Periodo p : periodos) {
-            List<LocalDate> fechasDelPeriodo = calcularFechasPorDia(p, detalle.getDiaSemana());
+            List<LocalDate> fechasDelPeriodo = TimeUtils.obtenerFechasParaPeriodosYDia(
+                    TimeUtils.convertirDiaSemanaADayOfWeek(detalle.getDiaSemana()), p);
             
             List<DiaEsporadica> reservasPeriodo = reservaEsporadicaDAO
                     .findDiaEsporadicaByFechasAndAulaId(fechasDelPeriodo, detalle.getAulaId());
             
             for (DiaEsporadica dr : reservasPeriodo) {
-                if (hayConflictoHorario(dr.getHoraInicio(), dr.getHoraFinal(), 
+                if (TimeUtils.hayConflictoHorario(dr.getHoraInicio(), dr.getHoraFinal(), 
                         detalle.getHorarioInicio(), detalle.getHorarioFinal())) {
                     return false;
                 }
@@ -192,7 +188,7 @@ public class GestorReserva {
                     .findByDiaSemanaAndPeriodosAndAulaId(detalle.getDiaSemana(), periodosIds, detalle.getAulaId());
 
             for (DiaPeriodica dp : DiasPer) {
-                if (hayConflictoHorario(dp.getHoraInicio(), dp.getHoraFinal(), 
+                if (TimeUtils.hayConflictoHorario(dp.getHoraInicio(), dp.getHoraFinal(), 
                         detalle.getHorarioInicio(), detalle.getHorarioFinal())) {
                     return false;
                 }
@@ -201,55 +197,6 @@ public class GestorReserva {
 
         return true;
     }
-
-
-    private List<LocalDate> calcularFechasPorDia(Periodo periodo, DiaSemana diaSemana) {
-        List<LocalDate> fechas = new ArrayList<>();
-        LocalDate fecha = periodo.getFechaInicio();
-
-        DayOfWeek dayOfWeek = convertirDiaADayOfWeek(diaSemana);
-
-        while (!fecha.isAfter(periodo.getFechaFin())) {
-            if (fecha.getDayOfWeek().equals(dayOfWeek)) {
-                fechas.add(fecha);
-            }
-            fecha = fecha.plusDays(1);
-        }
-
-        return fechas;
-    }
-
-    private DayOfWeek convertirDiaADayOfWeek(DiaSemana diaSemana) {
-        switch (diaSemana) {
-            case LUNES: return DayOfWeek.MONDAY;
-            case MARTES: return DayOfWeek.TUESDAY;
-            case MIERCOLES: return DayOfWeek.WEDNESDAY;
-            case JUEVES: return DayOfWeek.THURSDAY;
-            case VIERNES: return DayOfWeek.FRIDAY;
-            case SABADO: return DayOfWeek.SATURDAY;
-            default: throw new IllegalArgumentException("Día de la semana no válido: " + diaSemana);
-        }
-    }
-    
-       private DiaSemana convertirDayOfWeekADiaSemana(DayOfWeek dayOfWeek) {
-        switch (dayOfWeek) {
-            case MONDAY: return DiaSemana.LUNES;
-            case TUESDAY: return DiaSemana.MARTES;
-            case WEDNESDAY: return DiaSemana.MIERCOLES;
-            case THURSDAY: return DiaSemana.JUEVES;
-            case FRIDAY: return DiaSemana.VIERNES;
-            case SATURDAY: return DiaSemana.SABADO;
-            default: throw new IllegalArgumentException("Día de la semana no válido: " + dayOfWeek);
-        }
-    }
-    
-    
-
-
-    private boolean horaSeSuperpone(LocalTime inicio1, LocalTime fin1, LocalTime inicio2, LocalTime fin2) {
-        return !(fin1.isBefore(inicio2) || inicio1.isAfter(fin2));
-    }
-
 
 
 
@@ -285,40 +232,6 @@ public class GestorReserva {
         }
     }
 
-
-
-    private void mostrarDatos(ReservaDTO reservaDTO) {
-        // Mostrar los datos principales de ReservaDTO
-        System.out.println("Nombre Usuario: " + reservaDTO.getNombreUsuario());
-        System.out.println("Solicitante: " + reservaDTO.getSolicitante());
-        System.out.println("Correo: " + reservaDTO.getCorreo());
-        System.out.println("Cátedra: " + reservaDTO.getCatedra());
-        System.out.println("Fecha Realizada: " + reservaDTO.getFechaRealizada());
-        System.out.println("Tipo de Reserva: " + reservaDTO.getTipoReserva());
-        System.out.println("Periodo: " + (reservaDTO.getPeriodo() != null ? reservaDTO.getPeriodo() : "N/A"));
-        System.out.println("Tipo de Aula: " + reservaDTO.getTipoAula());
-        System.out.println("Cantidad de Alumnos: " + reservaDTO.getCantidadAlumnos());
-
-        // Mostrar los detalles de cada reserva en la lista detalleReserva
-        if (reservaDTO.getDetalleReserva() != null && !reservaDTO.getDetalleReserva().isEmpty()) {
-            System.out.println("Detalles de la Reserva:");
-            for (DetalleReservaDTO detalle : reservaDTO.getDetalleReserva()) {
-                System.out.println("\tDía de la Semana: " + detalle.getDiaSemana());
-                System.out.println("\tFecha: " + detalle.getFecha());
-                System.out.println("\tHorario Inicio: " + detalle.getHorarioInicio());
-                System.out.println("\tHorario Final: " + detalle.getHorarioFinal());
-                System.out.println("\tAula ID: " + detalle.getAulaId());
-            }
-        } else {
-            System.out.println("No hay detalles de reserva.");
-        }
-    }
-
-    private boolean hayConflictoHorario(LocalTime inicio1, LocalTime fin1, LocalTime inicio2, LocalTime fin2) {
-        return inicio1.isBefore(fin2) && inicio2.isBefore(fin1);
-    }
-    
-    
 }
 
 
